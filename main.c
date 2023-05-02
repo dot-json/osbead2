@@ -402,7 +402,7 @@ void checkDayAndStartBusses(int **schedule, struct Employee *employees, int day)
 
     int fd_0[2];
     int fd_1[2];
-    pid_t pid;
+    pid_t pid, wpid;
 
     if (pipe(fd_0) < 0 || pipe(fd_1) < 0) {
         perror("Error creating pipes");
@@ -443,6 +443,7 @@ void checkDayAndStartBusses(int **schedule, struct Employee *employees, int day)
             if (i == 0 && childProcessReady[0] == 1) {
                 close(fd_0[0]);
                 char buffer[1024];
+                memset(buffer, 0, sizeof(buffer));
                 for (int i = 0; i < getEmployeeSize(employees); i++) {
                     if (schedule[day][i] != -1) {
                         strcat(buffer, employees[schedule[day][i]].name);
@@ -459,6 +460,7 @@ void checkDayAndStartBusses(int **schedule, struct Employee *employees, int day)
             } else if (i == 1 && childProcessReady[1] == 1) {
                 close(fd_1[0]);
                 char buffer[1024];
+                memset(buffer, 0, sizeof(buffer));
                 for (int i = getEmployeeIndex(employees, employee) + 1; i < 10; i++) {
                     if (schedule[day][i] != -1) {
                         strcat(buffer, employees[schedule[day][i]].name);
@@ -470,7 +472,8 @@ void checkDayAndStartBusses(int **schedule, struct Employee *employees, int day)
             }
         }
     }
-    sleep(2);
+    while ((wpid = wait(NULL)) > 0) {
+    };
 }
 
 void runMenu(int **schedule, struct Employee *employees, int capacity[]) {

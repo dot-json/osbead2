@@ -2,6 +2,7 @@
 #define FRAMEWORK_H
 
 #include <math.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,5 +30,6 @@ void descheduleEmployees(int **schedule, int size, int capacity[], struct Employ
 void printSchedule(int **schedule, int size, struct Employee *employees);
 void printEmployees(struct Employee *employees, int size);
 void runMenu(int **schedule, struct Employee *employees, int capacity[]);
+void checkDayAndStartBusses(int **schedule, struct Employee *employees, int day);
 
 #endif
