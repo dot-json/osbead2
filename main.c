@@ -13,7 +13,7 @@ int main() {
 
     read_file(FILENAME, file_size, employees);
     write_file(FILENAME, employees);
-    int capacity[] = {2, 4, 6, 3, 4};
+    int capacity[] = {10, 9, 7, 8, 10};
     int **schedule = initSchedule(MAX_EMPLOYEES);
 
     runMenu(schedule, employees, capacity);
@@ -377,6 +377,17 @@ void printCapacity(int capacity[]) {
     }
 }
 
+// write a function that counts the employees in a string and the employees are separated by newlines
+int countEmployeesOnBus(char *bus) {
+    int count = 0;
+    for (int i = 0; i < strlen(bus); i++) {
+        if (bus[i] == '\n') {
+            count++;
+        }
+    }
+    return count;
+}
+
 void sigusr1_handler(int sig) {
     if (sig == SIGUSR1) {
         printf("------------\nBus 1 is ready!\n");
@@ -402,7 +413,9 @@ void checkDayAndStartBusses(int **schedule, struct Employee *employees, int day)
 
     int fd_0[2];
     int fd_1[2];
-    pid_t pid, wpid;
+    pid_t pid[2];
+    pid_t wpid;
+    int status;
 
     if (pipe(fd_0) < 0 || pipe(fd_1) < 0) {
         perror("Error creating pipes");
@@ -413,26 +426,30 @@ void checkDayAndStartBusses(int **schedule, struct Employee *employees, int day)
     signal(SIGUSR2, sigusr2_handler);
 
     for (int i = 0; i < size; i++) {
-        pid = fork();
-        if (pid == 0) {
+        pid[i] = fork();
+        if (pid[i] == 0) {
             if (i == 0) {
                 childProcessReady[0] = 0;
                 close(fd_0[1]);
                 kill(getppid(), SIGUSR1);
-                sleep(1);
                 char buffer[1024];
                 read(fd_0[0], buffer, sizeof(buffer));
                 printf("Employees:\n%s", buffer);
+                printf("------------\nBus 1 arrived!\n");
+                printf("Delivered %d employees!\n", countEmployeesOnBus(buffer));
+                exit(0);
             } else {
+                wpid = waitpid(pid[0], &status, 0);
                 childProcessReady[1] = 0;
                 close(fd_1[1]);
                 kill(getppid(), SIGUSR2);
-                sleep(1);
                 char buffer[1024];
                 read(fd_1[0], buffer, sizeof(buffer));
-                printf("Employees:\n%s \n", buffer);
+                printf("Employees:\n%s", buffer);
+                printf("------------\nBus 2 arrived!\n");
+                printf("Delivered %d employees!\n", countEmployeesOnBus(buffer));
+                exit(0);
             }
-            exit(0);
         } else {
             sleep(1);
             while (childProcessReady[0] == 0 || childProcessReady[1] == 0) {
@@ -461,7 +478,7 @@ void checkDayAndStartBusses(int **schedule, struct Employee *employees, int day)
                 close(fd_1[0]);
                 char buffer[1024];
                 memset(buffer, 0, sizeof(buffer));
-                for (int i = getEmployeeIndex(employees, employee) + 1; i < 10; i++) {
+                for (int i = getEmployeeIndex(employees, employee); i < 10; i++) {
                     if (schedule[day][i] != -1) {
                         strcat(buffer, employees[schedule[day][i]].name);
                         strcat(buffer, "\n");
