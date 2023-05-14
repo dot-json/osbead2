@@ -1,10 +1,5 @@
 #include "framework.h"
 
-#define MAX_EMPLOYEES 50
-#define FILENAME "employees"
-
-int childProcessReady[2] = {-1, -1};
-
 int main() {
     struct Employee employees[MAX_EMPLOYEES];
     initEmployees(employees);
@@ -391,14 +386,12 @@ int countEmployeesOnBus(char *bus) {
 void sigusr1_handler(int sig) {
     if (sig == SIGUSR1) {
         printf("------------\nBus 1 is ready!\n");
-        childProcessReady[0] = 1;
     }
 }
 
 void sigusr2_handler(int sig) {
     if (sig == SIGUSR2) {
         printf("------------\nBus 2 is ready!\n");
-        childProcessReady[1] = 1;
     }
 }
 
@@ -416,10 +409,20 @@ void checkDayAndStartBusses(int **schedule, struct Employee *employees, int day)
     pid_t pid[2];
     pid_t wpid;
     int status;
+    int msgid[2];
+    msg_buffer msgbuf[2];
 
     if (pipe(fd_0) < 0 || pipe(fd_1) < 0) {
         perror("Error creating pipes");
         return;
+    }
+
+    for (int i = 0; i < size; i++) {
+        msgid[i] = msgget(IPC_PRIVATE, 0666 | IPC_CREAT);
+        if (msgid[i] == -1) {
+            perror("Error creating message queue");
+            return;
+        }
     }
 
     signal(SIGUSR1, sigusr1_handler);
@@ -429,35 +432,48 @@ void checkDayAndStartBusses(int **schedule, struct Employee *employees, int day)
         pid[i] = fork();
         if (pid[i] == 0) {
             if (i == 0) {
-                childProcessReady[0] = 0;
                 close(fd_0[1]);
                 kill(getppid(), SIGUSR1);
                 char buffer[1024];
                 read(fd_0[0], buffer, sizeof(buffer));
                 printf("Employees:\n%s", buffer);
-                printf("------------\nBus 1 arrived!\n");
-                printf("Delivered %d employees!\n", countEmployeesOnBus(buffer));
+                msgbuf[0].msg_type = 1;
+                int employeeCount = countEmployeesOnBus(buffer);
+                char employeeCountStr[10];
+                memset(employeeCountStr, 0, sizeof(employeeCountStr));
+                sprintf(employeeCountStr, "%d", employeeCount);
+                snprintf(msgbuf[0].msg_text, 128, "%s", employeeCountStr);
+                if (msgsnd(msgid[0], &msgbuf[0], 128, 0) == -1) {
+                    perror("Error sending message");
+                    return;
+                }
+                close(msgid[0]);
                 exit(0);
             } else {
                 wpid = waitpid(pid[0], &status, 0);
-                childProcessReady[1] = 0;
                 close(fd_1[1]);
                 kill(getppid(), SIGUSR2);
                 char buffer[1024];
                 read(fd_1[0], buffer, sizeof(buffer));
                 printf("Employees:\n%s", buffer);
-                printf("------------\nBus 2 arrived!\n");
-                printf("Delivered %d employees!\n", countEmployeesOnBus(buffer));
+                msgbuf[1].msg_type = 1;
+                int employeeCount = countEmployeesOnBus(buffer);
+                char employeeCountStr[10];
+                memset(employeeCountStr, 0, sizeof(employeeCountStr));
+                sprintf(employeeCountStr, "%d", employeeCount);
+                snprintf(msgbuf[1].msg_text, 128, "%s", employeeCountStr);
+                if (msgsnd(msgid[1], &msgbuf[1], 128, 0) == -1) {
+                    perror("Error sending message");
+                    return;
+                }
+                close(msgid[1]);
                 exit(0);
             }
         } else {
             sleep(1);
-            while (childProcessReady[0] == 0 || childProcessReady[1] == 0) {
-                sleep(1);
-            }
             int n = 0;
             char employee[64];
-            if (i == 0 && childProcessReady[0] == 1) {
+            if (i == 0) {
                 close(fd_0[0]);
                 char buffer[1024];
                 memset(buffer, 0, sizeof(buffer));
@@ -474,7 +490,7 @@ void checkDayAndStartBusses(int **schedule, struct Employee *employees, int day)
                 }
                 write(fd_0[1], buffer, sizeof(buffer));
                 close(fd_0[1]);
-            } else if (i == 1 && childProcessReady[1] == 1) {
+            } else if (i == 1) {
                 close(fd_1[0]);
                 char buffer[1024];
                 memset(buffer, 0, sizeof(buffer));
@@ -489,8 +505,18 @@ void checkDayAndStartBusses(int **schedule, struct Employee *employees, int day)
             }
         }
     }
-    while ((wpid = wait(NULL)) > 0) {
-    };
+    if (size == 1) {
+        msgrcv(msgid[0], &msgbuf[0], 128, 1, 0);
+        printf("------------\nBus 1 arrived with %s employees!\n", msgbuf[0].msg_text);
+    } else {
+        msgrcv(msgid[0], &msgbuf[0], 128, 1, 0);
+        msgrcv(msgid[1], &msgbuf[1], 128, 1, 0);
+        printf("------------\nBus 1 arrived with %s employees!\n", msgbuf[0].msg_text);
+        printf("------------\nBus 2 arrived with %s employees!\n", msgbuf[1].msg_text);
+    }
+    for (int i = 0; i < 2; i++) {
+        msgctl(msgid[i], IPC_RMID, NULL);
+    }
 }
 
 void runMenu(int **schedule, struct Employee *employees, int capacity[]) {
